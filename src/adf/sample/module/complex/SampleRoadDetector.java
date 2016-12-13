@@ -24,10 +24,10 @@ import java.util.*;
 import static rescuecore2.standard.entities.StandardEntityURN.*;
 
 public class SampleRoadDetector extends RoadDetector {
-    private Set<EntityID> targetAreas;
-    private Set<EntityID> priorityRoads;
-
     private PathPlanning pathPlanning;
+
+    private Set<EntityID> targetAreas;
+    private Set<EntityID> priorityAreas;
 
     private EntityID result;
 
@@ -49,36 +49,30 @@ public class SampleRoadDetector extends RoadDetector {
 
     @Override
     public RoadDetector calc() {
-        if(this.result == null) {
-            EntityID positionID = this.agentInfo.getPosition();
-            if (this.targetAreas.contains(positionID)) {
-                this.result = positionID;
-                return this;
-            }
-            List<EntityID> removeList = new ArrayList<>(this.priorityRoads.size());
-            for(EntityID id : this.priorityRoads) {
-                if(!this.targetAreas.contains(id)) {
-                    removeList.add(id);
-                }
-            }
-            this.priorityRoads.removeAll(removeList);
-            if(this.priorityRoads.size() > 0) {
-                this.pathPlanning.setFrom(positionID);
-                this.pathPlanning.setDestination(this.targetAreas);
-                List<EntityID> path = this.pathPlanning.calc().getResult();
-                if (path != null && path.size() > 0) {
-                    this.result = path.get(path.size() - 1);
-                }
-                return this;
-            }
+        if(this.result != null) {
+            return this;
+        }
+        EntityID positionID = this.agentInfo.getPosition();
+        if (this.targetAreas.contains(positionID)) {
+            this.result = positionID;
+            return this;
+        }
 
-
+        if(this.priorityAreas.size() > 0) {
             this.pathPlanning.setFrom(positionID);
-            this.pathPlanning.setDestination(this.targetAreas);
+            this.pathPlanning.setDestination(this.priorityAreas);
             List<EntityID> path = this.pathPlanning.calc().getResult();
             if (path != null && path.size() > 0) {
                 this.result = path.get(path.size() - 1);
             }
+            return this;
+        }
+
+        this.pathPlanning.setFrom(positionID);
+        this.pathPlanning.setDestination(this.targetAreas);
+        List<EntityID> path = this.pathPlanning.calc().getResult();
+        if (path != null && path.size() > 0) {
+            this.result = path.get(path.size() - 1);
         }
         return this;
     }
@@ -105,24 +99,7 @@ public class SampleRoadDetector extends RoadDetector {
             return this;
         }
         this.pathPlanning.resume(precomputeData);
-        this.targetAreas = new HashSet<>();
-        for(StandardEntity e : this.worldInfo.getEntitiesOfType(REFUGE, BUILDING, GAS_STATION)) {
-            for(EntityID id : ((Building)e).getNeighbours()) {
-                StandardEntity neighbour = this.worldInfo.getEntity(id);
-                if(neighbour instanceof Road) {
-                    this.targetAreas.add(id);
-                }
-            }
-        }
-        this.priorityRoads = new HashSet<>();
-        for(StandardEntity e : this.worldInfo.getEntitiesOfType(REFUGE)) {
-            for(EntityID id : ((Building)e).getNeighbours()) {
-                StandardEntity neighbour = this.worldInfo.getEntity(id);
-                if(neighbour instanceof Road) {
-                    this.priorityRoads.add(id);
-                }
-            }
-        }
+        this.initTargetAreaSet();
         return this;
     }
 
@@ -133,6 +110,11 @@ public class SampleRoadDetector extends RoadDetector {
             return this;
         }
         this.pathPlanning.preparate();
+        this.initTargetAreaSet();
+        return this;
+    }
+
+    private void initTargetAreaSet() {
         this.targetAreas = new HashSet<>();
         for(StandardEntity e : this.worldInfo.getEntitiesOfType(REFUGE, BUILDING, GAS_STATION)) {
             for(EntityID id : ((Building)e).getNeighbours()) {
@@ -142,16 +124,15 @@ public class SampleRoadDetector extends RoadDetector {
                 }
             }
         }
-        this.priorityRoads = new HashSet<>();
+        this.priorityAreas = new HashSet<>();
         for(StandardEntity e : this.worldInfo.getEntitiesOfType(REFUGE)) {
             for(EntityID id : ((Building)e).getNeighbours()) {
                 StandardEntity neighbour = this.worldInfo.getEntity(id);
                 if(neighbour instanceof Road) {
-                    this.priorityRoads.add(id);
+                    this.priorityAreas.add(id);
                 }
             }
         }
-        return this;
     }
 
     @Override
@@ -161,17 +142,18 @@ public class SampleRoadDetector extends RoadDetector {
             return this;
         }
         this.pathPlanning.updateInfo(messageManager);
+
         if(this.result != null) {
             if(this.agentInfo.getPosition().equals(this.result)) {
                 StandardEntity entity = this.worldInfo.getEntity(this.result);
-                if(entity instanceof Building) {
-                    this.result = null;
-                } else if(entity instanceof Road) {
+                if(entity != null && entity instanceof Road) {
                     Road road = (Road)entity;
                     if(!road.isBlockadesDefined() || road.getBlockades().isEmpty()) {
                         this.targetAreas.remove(this.result);
                         this.result = null;
                     }
+                } else {
+                    this.result = null;
                 }
             }
         }
@@ -180,25 +162,36 @@ public class SampleRoadDetector extends RoadDetector {
             Class<? extends CommunicationMessage> messageClass = message.getClass();
             if(messageClass == MessageAmbulanceTeam.class) {
                 this.reflectMessage((MessageAmbulanceTeam)message);
+
             } else if(messageClass == MessageFireBrigade.class) {
                 this.reflectMessage((MessageFireBrigade)message);
+
             } else if(messageClass == MessageRoad.class) {
                 this.reflectMessage((MessageRoad)message, changedEntities);
+
             } else if(messageClass == MessagePoliceForce.class) {
                 this.reflectMessage((MessagePoliceForce)message);
+
             } else if(messageClass == CommandPolice.class) {
                 this.reflectMessage((CommandPolice)message);
             }
         }
-        for(EntityID id : this.worldInfo.getChanged().getChangedEntities()) {
+        for(EntityID id : changedEntities) {
             StandardEntity entity = this.worldInfo.getEntity(id);
-            if(entity instanceof Road) {
+            if(entity != null && entity instanceof Road) {
                 Road road = (Road)entity;
                 if(!road.isBlockadesDefined() || road.getBlockades().isEmpty()) {
                     this.targetAreas.remove(id);
                 }
             }
         }
+        List<EntityID> removeList = new ArrayList<>(this.priorityAreas.size());
+        for(EntityID id : this.priorityAreas) {
+            if(!this.targetAreas.contains(id)) {
+                removeList.add(id);
+            }
+        }
+        this.priorityAreas.removeAll(removeList);
         return this;
     }
 
@@ -230,22 +223,26 @@ public class SampleRoadDetector extends RoadDetector {
                 return;
             }
             StandardEntity target = this.worldInfo.getEntity(messageAmbulanceTeam.getTargetID());
+            if(target == null) {
+                return;
+            }
+
             if(target instanceof Building) {
                 for (EntityID id : ((Building)target).getNeighbours()) {
                     StandardEntity neighbour = this.worldInfo.getEntity(id);
-                    if (neighbour instanceof Road) {
-                        this.priorityRoads.add(id);
+                    if (neighbour != null && neighbour instanceof Road) {
+                        this.priorityAreas.add(id);
                     }
                 }
             } else if(target instanceof Human) {
                 Human human = (Human)target;
                 if(human.isPositionDefined()) {
                     StandardEntity position = this.worldInfo.getPosition(human);
-                    if(position instanceof Building) {
+                    if(position != null && position instanceof Building) {
                         for (EntityID id : ((Building)position).getNeighbours()) {
                             StandardEntity neighbour = this.worldInfo.getEntity(id);
-                            if (neighbour instanceof Road) {
-                                this.priorityRoads.add(id);
+                            if (neighbour != null && neighbour instanceof Road) {
+                                this.priorityAreas.add(id);
                             }
                         }
                     }
@@ -260,15 +257,18 @@ public class SampleRoadDetector extends RoadDetector {
         }
         if(messageFireBrigade.getAction() == MessageFireBrigade.ACTION_REFILL) {
             StandardEntity target = this.worldInfo.getEntity(messageFireBrigade.getTargetID());
+            if(target == null) {
+                return;
+            }
             if(target instanceof Building) {
                 for (EntityID id : ((Building)target).getNeighbours()) {
                     StandardEntity neighbour = this.worldInfo.getEntity(id);
                     if (neighbour instanceof Road) {
-                        this.priorityRoads.add(id);
+                        this.priorityAreas.add(id);
                     }
                 }
             } else if(target.getStandardURN() == HYDRANT) {
-                this.priorityRoads.add(target.getID());
+                this.priorityAreas.add(target.getID());
                 this.targetAreas.add(target.getID());
             }
         }
@@ -311,7 +311,7 @@ public class SampleRoadDetector extends RoadDetector {
 
     private void reflectMessage(CommandPolice commandPolice) {
         boolean flag = false;
-        if(commandPolice.isToIDDefined() && this.agentInfo.getID().getValue() == commandPolice.getToID().getValue()) {
+        if(commandPolice.isToIDDefined() && this.agentInfo.getID().equals(commandPolice.getToID())) {
             flag = true;
         } else if(commandPolice.isBroadcast()) {
             flag = true;
@@ -321,13 +321,16 @@ public class SampleRoadDetector extends RoadDetector {
                 return;
             }
             StandardEntity target = this.worldInfo.getEntity(commandPolice.getTargetID());
+            if(target == null) {
+                return;
+            }
             if(target instanceof Area) {
-                this.priorityRoads.add(target.getID());
+                this.priorityAreas.add(target.getID());
                 this.targetAreas.add(target.getID());
             } else if(target.getStandardURN() == BLOCKADE) {
                 Blockade blockade = (Blockade)target;
                 if(blockade.isPositionDefined()) {
-                    this.priorityRoads.add(blockade.getPosition());
+                    this.priorityAreas.add(blockade.getPosition());
                     this.targetAreas.add(blockade.getPosition());
                 }
             }

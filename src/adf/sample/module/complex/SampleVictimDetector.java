@@ -504,22 +504,6 @@ public class SampleVictimDetector extends HumanDetector {
         return 0.0D;
     }
 
-    private class DistanceSorter implements Comparator<StandardEntity> {
-        private StandardEntity reference;
-        private WorldInfo worldInfo;
-
-        DistanceSorter(WorldInfo wi, StandardEntity reference) {
-            this.reference = reference;
-            this.worldInfo = wi;
-        }
-
-        public int compare(StandardEntity a, StandardEntity b) {
-            int d1 = this.worldInfo.getDistance(this.reference, a);
-            int d2 = this.worldInfo.getDistance(this.reference, b);
-            return d1 - d2;
-        }
-    }
-
     private int getMaxTravelTime(Area area) {
         int distance = 0;
         List<Edge> edges = new ArrayList<>();
@@ -557,6 +541,23 @@ public class SampleVictimDetector extends HumanDetector {
         double dx = toX - fromX;
         double dy = toY - fromY;
         return (int)Math.hypot(dx, dy);
+    }
+
+
+    private class DistanceSorter implements Comparator<StandardEntity> {
+        private StandardEntity reference;
+        private WorldInfo worldInfo;
+
+        DistanceSorter(WorldInfo wi, StandardEntity reference) {
+            this.reference = reference;
+            this.worldInfo = wi;
+        }
+
+        public int compare(StandardEntity a, StandardEntity b) {
+            int d1 = this.worldInfo.getDistance(this.reference, a);
+            int d2 = this.worldInfo.getDistance(this.reference, b);
+            return d1 - d2;
+        }
     }
 }
 
